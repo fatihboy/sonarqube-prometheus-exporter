@@ -17,6 +17,8 @@ import org.sonarqube.ws.client.components.SearchRequest;
 import org.sonarqube.ws.client.measures.ComponentRequest;
 import org.sonarqube.ws.client.projectbranches.ListRequest;
 
+import org.sonar.api.utils.log.*;
+
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.util.*;
@@ -25,6 +27,7 @@ import java.util.stream.Collectors;
 import static java.util.Objects.nonNull;
 
 public class PrometheusWebService implements WebService {
+    private static final Logger LOGGER = Loggers.get(PrometheusWebService.class);
 
     static final Set<Metric<?>> SUPPORTED_METRICS = new HashSet<>();
     static final String CONFIG_PREFIX = "prometheus.export.";
@@ -35,24 +38,75 @@ public class PrometheusWebService implements WebService {
     private final Set<Metric<?>> enabledMetrics = new HashSet<>();
 
     static {
-
-        SUPPORTED_METRICS.add(CoreMetrics.BUGS);
-        SUPPORTED_METRICS.add(CoreMetrics.VULNERABILITIES);
-        SUPPORTED_METRICS.add(CoreMetrics.CODE_SMELLS);
-        SUPPORTED_METRICS.add(CoreMetrics.COVERAGE);
-        SUPPORTED_METRICS.add(CoreMetrics.TECHNICAL_DEBT);
-        SUPPORTED_METRICS.add(CoreMetrics.COMPLEXITY);
+        // ISSUES
+        SUPPORTED_METRICS.add(CoreMetrics.VIOLATIONS);
         SUPPORTED_METRICS.add(CoreMetrics.BLOCKER_VIOLATIONS);
         SUPPORTED_METRICS.add(CoreMetrics.CRITICAL_VIOLATIONS);
         SUPPORTED_METRICS.add(CoreMetrics.MAJOR_VIOLATIONS);
         SUPPORTED_METRICS.add(CoreMetrics.MINOR_VIOLATIONS);
         SUPPORTED_METRICS.add(CoreMetrics.INFO_VIOLATIONS);
+
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_VIOLATIONS);
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_BLOCKER_VIOLATIONS);
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_CRITICAL_VIOLATIONS);
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_MAJOR_VIOLATIONS);
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_MINOR_VIOLATIONS);
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_INFO_VIOLATIONS);
+
+        SUPPORTED_METRICS.add(CoreMetrics.FALSE_POSITIVE_ISSUES);
+        SUPPORTED_METRICS.add(CoreMetrics.OPEN_ISSUES);
+        SUPPORTED_METRICS.add(CoreMetrics.CONFIRMED_ISSUES);
+        SUPPORTED_METRICS.add(CoreMetrics.REOPENED_ISSUES);
+
+
+        // Maintainability
+        SUPPORTED_METRICS.add(CoreMetrics.CODE_SMELLS);
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_CODE_SMELLS);
+        SUPPORTED_METRICS.add(CoreMetrics.SQALE_RATING);
+        SUPPORTED_METRICS.add(CoreMetrics.TECHNICAL_DEBT);
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_TECHNICAL_DEBT);
+        SUPPORTED_METRICS.add(CoreMetrics.SQALE_DEBT_RATIO);
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_SQALE_DEBT_RATIO);
+
+        // Reliability
+        SUPPORTED_METRICS.add(CoreMetrics.BUGS);
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_BUGS);
+        SUPPORTED_METRICS.add(CoreMetrics.RELIABILITY_RATING);
+        SUPPORTED_METRICS.add(CoreMetrics.RELIABILITY_REMEDIATION_EFFORT);
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_RELIABILITY_REMEDIATION_EFFORT);
+
+        // Security
+        SUPPORTED_METRICS.add(CoreMetrics.VULNERABILITIES);
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_VULNERABILITIES);
+        SUPPORTED_METRICS.add(CoreMetrics.SECURITY_RATING);
+        SUPPORTED_METRICS.add(CoreMetrics.SECURITY_REMEDIATION_EFFORT);
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_SECURITY_REMEDIATION_EFFORT);
+        
+        // Size
+        SUPPORTED_METRICS.add(CoreMetrics.CLASSES);
+        SUPPORTED_METRICS.add(CoreMetrics.COMMENT_LINES);
+        SUPPORTED_METRICS.add(CoreMetrics.COMMENT_LINES_DENSITY);
+        SUPPORTED_METRICS.add(CoreMetrics.FILES);
+        SUPPORTED_METRICS.add(CoreMetrics.LINES);
+        SUPPORTED_METRICS.add(CoreMetrics.GENERATED_LINES);
+        SUPPORTED_METRICS.add(CoreMetrics.GENERATED_NCLOC);
+        SUPPORTED_METRICS.add(CoreMetrics.NCLOC);
+        //SUPPORTED_METRICS.add(CoreMetrics.NCLOC_LANGUAGE_DISTRIBUTION);
+        
+        SUPPORTED_METRICS.add(CoreMetrics.FUNCTIONS);
+        SUPPORTED_METRICS.add(CoreMetrics.STATEMENTS);
+        
+        SUPPORTED_METRICS.add(CoreMetrics.LINES_TO_COVER);
+
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_LINES);
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_LINES_TO_COVER);
+
+        SUPPORTED_METRICS.add(CoreMetrics.COVERAGE);
+        SUPPORTED_METRICS.add(CoreMetrics.COMPLEXITY);
         SUPPORTED_METRICS.add(CoreMetrics.DUPLICATED_LINES_DENSITY);
         SUPPORTED_METRICS.add(CoreMetrics.DUPLICATED_BLOCKS);
         SUPPORTED_METRICS.add(CoreMetrics.DUPLICATED_LINES);
         SUPPORTED_METRICS.add(CoreMetrics.DUPLICATED_FILES);
-        SUPPORTED_METRICS.add(CoreMetrics.OPEN_ISSUES);
-        SUPPORTED_METRICS.add(CoreMetrics.NCLOC);
         SUPPORTED_METRICS.add(CoreMetrics.COGNITIVE_COMPLEXITY);
         SUPPORTED_METRICS.add(CoreMetrics.NEW_COVERAGE);
 
@@ -91,11 +145,15 @@ public class PrometheusWebService implements WebService {
                                 Measures.ComponentWsResponse wsResponse = getMeasures(wsClient, project, branch.getName());
                                 wsResponse.getComponent().getMeasuresList().forEach(measure -> {
                                     if (this.gauges.containsKey(measure.getMetric())) {
-    
-                                        if(measure.hasValue()){
-                                            this.gauges.get(measure.getMetric()).labels(project.getKey(), project.getName(), branch.getName()).set(Double.valueOf(measure.getValue()));
-                                        }else{
-                                            this.gauges.get(measure.getMetric()).labels(project.getKey(), project.getName(), branch.getName()).set(Double.valueOf(measure.getPeriods().getPeriodsValueList().get(0).getValue()));
+                                        try {
+                                            if(measure.hasValue()){
+                                                this.gauges.get(measure.getMetric()).labels(project.getKey(), project.getName(), branch.getName()).set(Double.valueOf(measure.getValue()));
+                                            }else{
+                                                this.gauges.get(measure.getMetric()).labels(project.getKey(), project.getName(), branch.getName()).set(Double.valueOf(measure.getPeriods().getPeriodsValueList().get(0).getValue()));
+                                            }
+                                        } catch(Exception e) {
+                                            // ignore non-numeric invalid values
+                                            LOGGER.warn(String.format("["+project.getKey() +"_" + project.getName() + "]:" + measure.getMetric() + "=>" +measure.getValue()), e);
                                         }
                                     }
                                 });
