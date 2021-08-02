@@ -110,6 +110,7 @@ public class PrometheusWebService implements WebService {
         SUPPORTED_METRICS.add(CoreMetrics.COGNITIVE_COMPLEXITY);
         SUPPORTED_METRICS.add(CoreMetrics.NEW_COVERAGE);
 
+        SUPPORTED_METRICS.add(CoreMetrics.PROJECTS);
     }
 
     public PrometheusWebService(Configuration configuration) {
