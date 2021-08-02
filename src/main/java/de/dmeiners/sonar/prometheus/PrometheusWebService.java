@@ -52,6 +52,7 @@ public class PrometheusWebService implements WebService {
         SUPPORTED_METRICS.add(CoreMetrics.OPEN_ISSUES);
         SUPPORTED_METRICS.add(CoreMetrics.NCLOC);
         SUPPORTED_METRICS.add(CoreMetrics.COGNITIVE_COMPLEXITY);
+        SUPPORTED_METRICS.add(CoreMetrics.NEW_COVERAGE);
 
     }
 
@@ -87,7 +88,11 @@ public class PrometheusWebService implements WebService {
                             wsResponse.getComponent().getMeasuresList().forEach(measure -> {
 
                                 if (this.gauges.containsKey(measure.getMetric())) {
-                                    this.gauges.get(measure.getMetric()).labels(project.getKey(), project.getName()).set(Double.valueOf(measure.getValue()));
+                                    if(measure.hasValue()){
+                                        this.gauges.get(measure.getMetric()).labels(project.getKey(), project.getName()).set(Double.valueOf(measure.getValue()));
+                                    }else{
+                                        this.gauges.get(measure.getMetric()).labels(project.getKey(), project.getName()).set(Double.valueOf(measure.getPeriods().getPeriodsValueList().get(0).getValue()));
+                                    }
                                 }
                             });
                         });
